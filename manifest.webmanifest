@@ -1,0 +1,16 @@
+{
+  "name": "Local Message Simulator",
+  "short_name": "Local Chats",
+  "description": "A private, device-only messaging simulation.",
+  "theme_color": "#080a09",
+  "background_color": "#080a09",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "./",
+  "start_url": "./",
+  "icons": [
+    { "src": "./pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
