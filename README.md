@@ -42,7 +42,7 @@ Create the production files with `npm run build`. They are written to `dist/`. `
 - Groups appear in the **Chats** list, while **Communities** contains communities and their associated groups. Create or edit a group name, picture, and member list from the group chat header. Group messages support local sent and received text entries.
 - The **Calls** tab keeps a local call log with contact, incoming/outgoing/missed type, date, duration, and audio/video designation. Use **+** to add an entry; this does not place a real call.
 - In **Updates**, post a photo or video under your own status or a contact’s name. Statuses are removed after 24 hours, including while the app remains open, and can be viewed full screen.
-- The **You** tab lets the user edit their profile name, photo, phone number, and About text. Photos can be square-cropped. Its iOS-style settings pages save switches and choices, including Dark, Light, and System appearance. App information, backup and restore, and clear-data options are also there.
+- The **You** tab lets the user edit their profile name, photo, phone number, and About text. Photos can be square-cropped. Its iOS-style settings pages save switches and choices, including Dark, Light, and System appearance. App information, backup and restore, clear-data, and **Install app** options are also there. The install button uses the browser prompt on Android; on iPhone it explains Safari’s Share → Add to Home Screen flow, which Apple requires the user to confirm.
 
 ## Backups and the starter file
 

@@ -326,6 +326,16 @@ button.contact-row {
   border-radius: 50%;
 }
 
+.avatar > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: inherit;
+  object-fit: cover;
+  object-position: center;
+}
+
 .avatar-primary {
   border: 1px solid rgba(137, 176, 149, 0.22);
   background:
@@ -2451,6 +2461,16 @@ button.contact-row {
 [data-theme="light"] .photo-edit-button { color:#26332a; background:#e5ebe6; }
 [data-theme="light"] .tool-list button,[data-theme="light"] .tool-list button strong { color:#17211a; }
 [data-theme="light"] .profile-subpage-header { background:rgba(248,248,245,.96); }
+.install-app-row { margin:8px 16px calc(18px + env(safe-area-inset-bottom)); border:1px solid var(--line); border-radius:16px; background:var(--surface-1); }
+.install-app-row:active { transform:scale(.99); }
+.install-help { display:flex; flex-direction:column; gap:12px; color:var(--text); font-size:14px; line-height:1.5; }
+.install-help p { margin:0; padding:13px; border:1px solid var(--line); border-radius:14px; background:var(--surface-1); }
+.install-help strong { color:var(--text); }
+.install-help b { color:var(--green); font-weight:650; }
+.install-help .primary-action { width:100%; }
+[data-theme="light"] .install-app-row { color:#26332a; background:rgba(255,255,255,.78); }
+[data-theme="light"] .install-app-row strong { color:#17211a; }
+[data-theme="light"] .install-help { color:#26332a; }
 
 @media (max-width: 390px) {
   .home-header { padding-right: 15px; padding-left: 15px; }

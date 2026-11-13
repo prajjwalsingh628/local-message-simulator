@@ -86,6 +86,11 @@ type PendingConfirm = {
 
 const EMOJI_CHOICES = ['🙂', '😊', '🙏', '❤️', '✨', '👍', '🎉', '🌿', '🥹', '💛', '👏', '☀️'];
 
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
 function sortMessages(items: Message[]): Message[] {
   return [...items].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
 }
@@ -836,18 +841,23 @@ const SETTINGS_ROWS: Record<string, { label: string; icon: ReactNode; kind?: 'to
   'Tell a friend': [{ label: 'Share this app', icon: <Upload size={18} /> }]
 };
 
-function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePreference, onHome, onUpdates, onCalls, onCommunities, onExport, onImport, onReset, onToast }: {
+function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePreference, onHome, onUpdates, onCalls, onCommunities, onExport, onImport, onReset, onToast, isInstalled, onInstallApp }: {
   hasData: boolean; profile: AppProfile; preferences: Record<string, AppPreferenceValue>;
   onSaveProfile: (value: AppProfile) => Promise<void>;
   onSavePreference: (id: string, value: AppPreferenceValue) => Promise<void>;
   onHome: () => void; onUpdates: () => void; onCalls: () => void; onCommunities: () => void;
   onExport: () => void; onImport: () => void; onReset: () => void; onToast: (text: string) => void;
+  isInstalled: boolean; onInstallApp: () => Promise<boolean>;
 }) {
   const [page, setPage] = useState('');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(profile);
   const [cropSource, setCropSource] = useState<string | null>(null);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
+  const installApp = async () => {
+    if (!await onInstallApp()) setInstallHelpOpen(true);
+  };
   const saveSetting = async (key: string, value: AppPreferenceValue) => { try { await onSavePreference(key, value); } catch { onToast('Setting could not be saved.'); } };
   const openPage = (name: string) => { setPage(name); setEditing(false); };
   const closePage = () => setPage('');
@@ -871,6 +881,7 @@ function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePre
           <button className="settings-row" type="button" onClick={onImport}><span className="settings-row-icon"><Upload size={18} /></span><span><strong>Import or restore a backup</strong><small>Restore saved records from a backup file</small></span><ChevronRight size={17} /></button>
           <button className="settings-row reset-row" type="button" onClick={onReset} disabled={!hasData}><span className="settings-row-icon"><Trash2 size={18} /></span><span><strong>Clear app data</strong><small>Remove saved profile, preferences and chats</small></span><ChevronRight size={17} /></button>
         </section>
+        <button className="settings-row install-app-row" type="button" onClick={() => void installApp()}><span className="settings-row-icon"><Download size={18} /></span><span><strong>{isInstalled ? 'App installed' : 'Install app'}</strong><small>{isInstalled ? 'This app is on your Home Screen' : 'Add this app to your Home Screen'}</small></span><ChevronRight size={17} /></button>
       </> : <>
         <div className="settings-page-intro">{page === 'Chats' ? 'Personalize your conversations.' : page === 'Privacy' ? 'Choose how your information and activity appear.' : `Manage ${page.toLowerCase()} preferences.`}</div>
         {(SETTINGS_ROWS[page] ?? [{ label: page, icon: <Info size={18} /> }]).map((row) => {
@@ -887,6 +898,7 @@ function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePre
       <div className="new-contact-photo"><button type="button" onClick={() => photoRef.current?.click()} aria-label="Choose profile photo">{draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="" /> : <UserRound size={30} />}<span><Camera size={14} /></span></button><small>Profile photo</small><input ref={photoRef} className="visually-hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) setCropSource(URL.createObjectURL(file)); }} /></div>
       <label><span>Name</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required /></label><label><span>About</span><input value={draft.about} onChange={(event) => setDraft({ ...draft, about: event.target.value })} /></label><label><span>Phone number</span><input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} inputMode="tel" /></label><div className="form-actions"><button type="button" className="secondary-action" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="primary-action">Save</button></div>
     </form>{cropSource && <PhotoCropDialog source={cropSource} onCancel={() => { URL.revokeObjectURL(cropSource); setCropSource(null); }} onApply={(photo) => { setDraft({ ...draft, photoDataUrl: photo }); URL.revokeObjectURL(cropSource); setCropSource(null); }} />}</Dialog>}
+    {installHelpOpen && <Dialog title="Install this app" onClose={() => setInstallHelpOpen(false)} compact><div className="install-help"><p><strong>iPhone or iPad</strong><br />Open this page in Safari, tap Share, then choose <b>Add to Home Screen</b> and tap Add.</p><p><strong>Android</strong><br />In Chrome, open the menu and choose <b>Install app</b> or <b>Add to Home screen</b>. If an install prompt is available, use the Install app button in You.</p><button type="button" className="primary-action" onClick={() => setInstallHelpOpen(false)}>Done</button></div></Dialog>}
   </section>;
 }
 
@@ -1149,6 +1161,8 @@ function App() {
   const [storageError, setStorageError] = useState('');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [entryRequest, setEntryRequest] = useState<{ direction: Direction; currentTime: boolean } | null>(null);
   const [activeStatus, setActiveStatus] = useState<StatusUpdate | null>(null);
@@ -1207,6 +1221,26 @@ function App() {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(''), 3_400);
   }, []);
+
+  useEffect(() => {
+    const updateInstalled = () => setIsInstalled(window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
+    const capturePrompt = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPromptEvent); };
+    const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); showToast('App installed.'); };
+    updateInstalled();
+    window.addEventListener('beforeinstallprompt', capturePrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => { window.removeEventListener('beforeinstallprompt', capturePrompt); window.removeEventListener('appinstalled', onInstalled); };
+  }, [showToast]);
+
+  const installApp = async (): Promise<boolean> => {
+    if (isInstalled) { showToast('This app is already installed.'); return true; }
+    if (!installPrompt) return false;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    if (choice.outcome === 'accepted') setIsInstalled(true);
+    return true;
+  };
 
   useEffect(() => () => { if (toastTimer.current) window.clearTimeout(toastTimer.current); }, []);
 
@@ -1479,7 +1513,7 @@ function App() {
       onToast={showToast}
     />
   ) : screen === 'profile' ? (
-    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || calls.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || appProfile.about !== 'Available' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCalls={() => setScreen('calls')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} />
+    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || calls.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || appProfile.about !== 'Available' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCalls={() => setScreen('calls')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} isInstalled={isInstalled} onInstallApp={installApp} />
   ) : screen === 'updates' ? (
     <UpdatesScreen contacts={contacts} statuses={statuses} onAddStatus={addStatus} onOpenStatus={(status) => { setActiveStatus(status); }} onHome={() => setScreen('home')} onCalls={() => setScreen('calls')} onCommunities={() => setScreen('communities')} onProfile={() => setScreen('profile')} />
   ) : screen === 'calls' ? (
