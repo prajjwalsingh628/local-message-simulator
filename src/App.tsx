@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Archive,
   ArrowDown,
@@ -844,14 +845,14 @@ function Dialog({ title, children, onClose, compact = false }: { title: string; 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  return (
+  return createPortal((
     <div className="dialog-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={'dialog-panel ' + (compact ? 'compact-dialog' : '')} role="dialog" aria-modal="true" aria-label={title}>
         <div className="dialog-heading"><h2>{title}</h2><IconButton label="Close dialog" onClick={onClose} className="dialog-close"><X size={18} /></IconButton></div>
         {children}
       </section>
     </div>
-  );
+  ), document.body);
 }
 
 function AddContactDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string, countryCode: string, phoneNumber: string, photoDataUrl: string | null) => Promise<void> }) {
