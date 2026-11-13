@@ -419,6 +419,16 @@ function ConversationScreen({
     textareaRef.current?.focus();
   };
 
+  const chooseAttachment = (type: AttachmentType) => {
+    fileTypeRef.current = type;
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = type === 'image' ? 'image/*,video/*' : type === 'video' ? 'video/*' : type === 'audio' ? 'audio/*' : '*/*';
+      fileInputRef.current.removeAttribute('capture');
+      fileInputRef.current.click();
+    }
+    setPopup(null);
+  };
+
   const attachFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -456,6 +466,14 @@ function ConversationScreen({
       };
       recorder.start(); setRecording(true);
     } catch { window.alert('Microphone permission was not granted.'); }
+  };
+
+  const shareLocation = () => {
+    if (!navigator.geolocation) { window.alert('Location is not available in this browser.'); return; }
+    navigator.geolocation.getCurrentPosition((position) => {
+      void onSendAttachment({ id: makeId(), type: 'location', name: 'Location', latitude: position.coords.latitude, longitude: position.coords.longitude });
+      setPopup(null);
+    }, () => window.alert('Location permission was not granted.'), { enableHighAccuracy: false, timeout: 12000, maximumAge: 60_000 });
   };
 
   const renderAttachment = (attachment: MessageAttachment) => {
@@ -569,9 +587,15 @@ function ConversationScreen({
       </footer>
 
       {popup && (
-        <Dialog title="Add message with date & time" onClose={() => setPopup(null)} compact>
-          <p className="settings-note">Choose whether the entry is sent or received, and set its date and time.</p>
-          <button type="button" className="primary-action" onClick={() => { setPopup(null); onNewEntry('outgoing', false); }}>Continue</button>
+        <Dialog title="Add to chat" onClose={() => setPopup(null)} compact>
+          <div className="tool-list">
+            <button type="button" onClick={() => chooseAttachment('document')}><span className="tool-icon"><FileText size={18} /></span><span><strong>Document</strong><small>Choose a file from this device</small></span><ChevronRight size={17} /></button>
+            <button type="button" onClick={() => chooseAttachment('image')}><span className="tool-icon"><ImagePlus size={18} /></span><span><strong>Photos &amp; Videos</strong><small>Choose from your library</small></span><ChevronRight size={17} /></button>
+            <button type="button" onClick={() => chooseAttachment('audio')}><span className="tool-icon"><Music2 size={18} /></span><span><strong>Audio</strong><small>Choose an audio file</small></span><ChevronRight size={17} /></button>
+            <button type="button" onClick={shareLocation}><span className="tool-icon"><MapPin size={18} /></span><span><strong>Location</strong><small>Save this device’s location in the chat</small></span><ChevronRight size={17} /></button>
+            <button type="button" onClick={() => { setPopup(null); void onSendAttachment({ id: makeId(), type: 'contact', name: contact.name, contactName: contact.name, contactNumber: formatPhone(contact.countryCode, contact.phoneNumber) }); }}><span className="tool-icon"><ContactRound size={18} /></span><span><strong>Contact</strong><small>Share this contact card</small></span><ChevronRight size={17} /></button>
+            <button type="button" onClick={() => { setPopup(null); onNewEntry('outgoing', false); }}><span className="tool-icon"><FileClock size={18} /></span><span><strong>Add message with date &amp; time</strong><small>Choose sent or received and when it appears</small></span><ChevronRight size={17} /></button>
+          </div>
         </Dialog>
       )}
     </section>
