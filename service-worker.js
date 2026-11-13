@@ -1,5 +1,5 @@
-const CACHE_NAME = 'local-message-simulator-0df2f08690bb';
-const APP_FILES = ["./aashna-mam-apple-touch-icon.png","./aashna-mam-icon-192.png","./aashna-mam-icon-512.png","./index-CyxnXfdo.js","./index-OGg2ko66.css","./favicon-v2.svg","./index.html","./manifest.webmanifest"];
+const CACHE_NAME = 'local-message-simulator-eb797f26d4a2';
+const APP_FILES = ["./aashna-mam-apple-touch-icon.png","./aashna-mam-icon-192.png","./aashna-mam-icon-512.png","./index-B2Yw5hKi.css","./index-CyxnXfdo.js","./favicon-v2.svg","./index.html","./manifest.webmanifest","./viewport-height.js"];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -40,3 +40,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
