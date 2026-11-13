@@ -54,7 +54,9 @@ The private starter backup `Aashna-Mam-local-starter.json` is stored outside thi
 
 The production site is published at [prajjwalsingh628.github.io/local-message-simulator](https://prajjwalsingh628.github.io/local-message-simulator/). GitHub Pages serves only the static application files. Each person’s contacts and chat records stay in that person’s browser storage.
 
-To publish a new source revision, push the project to the repository’s `main` branch and let the included **Build and publish** GitHub Actions workflow finish. The repository must have **Settings → Pages → GitHub Actions** selected. No paid plan or backend is needed.
+To publish a new source revision, push the project to the repository’s `main` branch and let the included **Build and publish** GitHub Actions workflow finish. The repository is configured for **Settings → Pages → GitHub Actions** publishing. No paid plan or backend is needed.
+
+Recent refinements add stable settings-page navigation, precise square contact-photo cropping, group chats and editing in **Chats**, community membership lists, a locally stored Calls history, and improved Light-theme control contrast.
 
 ## Install on iPhone
 
