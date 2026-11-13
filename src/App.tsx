@@ -1268,7 +1268,7 @@ function App() {
   };
 
   const exportData = () => {
-    if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !Object.keys(preferences).length && appProfile.name === 'You') return;
+    if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !Object.keys(preferences).length && appProfile.name === 'You' && appProfile.about === 'Available' && !appProfile.phoneNumber && !appProfile.photoDataUrl) return;
     const backup = makeBackup({ contacts, messages, groups, groupMessages, communities, statuses, appProfile, preferences: Object.entries(preferences).map(([id, value]) => ({ id, value })) });
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1375,7 +1375,7 @@ function App() {
       onToast={showToast}
     />
   ) : screen === 'profile' ? (
-    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} />
+    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || appProfile.about !== 'Available' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} />
   ) : screen === 'updates' ? (
     <UpdatesScreen contacts={contacts} statuses={statuses} onAddStatus={addStatus} onOpenStatus={(status) => { setActiveStatus(status); }} onHome={() => setScreen('home')} onCommunities={() => setScreen('communities')} onProfile={() => setScreen('profile')} />
   ) : screen === 'communities' ? (
