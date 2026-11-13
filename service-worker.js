@@ -1,5 +1,5 @@
-const CACHE_NAME = 'local-message-simulator-a6eb3ef371e8';
-const APP_FILES = ["./aashna-mam-apple-touch-icon.png","./aashna-mam-icon-192.png","./aashna-mam-icon-512.png","./assets/index-Bf_s1WeQ.css","./assets/index-CZhrV-MA.js","./favicon-v2.svg","./index.html","./manifest.webmanifest"];
+const CACHE_NAME = 'local-message-simulator-dc455dc50db9';
+const APP_FILES = ["./aashna-mam-apple-touch-icon.png","./aashna-mam-icon-192.png","./aashna-mam-icon-512.png","./assets/index-CI2-u_rC.css","./assets/index-NjcZhhCq.js","./favicon-v2.svg","./index.html","./manifest.webmanifest"];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

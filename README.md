@@ -1,105 +1,65 @@
 # Aashna Mam Messaging Simulator
 
-A mobile-first React, TypeScript, and Vite app with an iOS-inspired chat list and conversations. Contacts and messages use IndexedDB in the current browser profile. Nothing is sent to phone numbers or a messaging service.
+A React, TypeScript, and Vite progressive web app with on-device IndexedDB storage. Contacts, chat messages, groups, communities, status media, and attachments remain in the browser’s database. The app does not connect to a messaging service or send content to phone numbers.
 
-The simulator and privacy explanation is in the **You** tab. The home screen and chats keep a clean messaging layout. Outgoing bubbles always use two grey decorative checks; incoming messages are entered manually. Neither direction represents a delivered message.
+## Project layout
 
-## Project structure
-
-~~~text
+```text
 local-messaging-simulator/
-├── .github/workflows/deploy.yml   # Free GitHub Pages deployment
-├── public/                        # App icons, manifest, service worker fallback
+├── .github/workflows/deploy.yml
+├── public/                 PWA manifest, icons, and service worker fallback
 ├── src/
-│   ├── assets/                    # Original icon source and chat wallpaper
-│   ├── domain/                    # IndexedDB and backup validation
-│   ├── App.tsx                    # Screens, contacts, and chat interactions
-│   ├── main.tsx                   # React and service worker entry
-│   └── styles.css                 # Responsive iOS-inspired interface
+│   ├── assets/             App icon source and chat wallpaper
+│   ├── domain/             IndexedDB, backups, and media helpers
+│   ├── App.tsx             Screens and interactions
+│   ├── main.tsx            React and service worker entry
+│   └── styles.css          Mobile-first interface and safe-area styles
+├── scripts/                Offline cache generation
 ├── index.html
 ├── package.json
-├── package-lock.json
-├── scripts/generate-service-worker.mjs
-└── vite.config.ts                 # Relative paths for static hosting
-~~~
+└── vite.config.ts
+```
 
 ## Run on Windows
 
-Install Node.js LTS from [nodejs.org](https://nodejs.org/). In PowerShell, open this folder and run:
+Install Node.js LTS, open this project folder in PowerShell, and run:
 
-~~~powershell
+```powershell
 npm ci
-npm run dev
-~~~
+npm run dev -- --host 0.0.0.0
+```
 
-Open the local address printed in the terminal, usually **http://localhost:5173**. Build the production site with:
+Vite prints a local address. Open it on the laptop. To check the layout from an iPhone on the same Wi-Fi, use the laptop’s IPv4 address and port shown by Vite, for example `http://192.168.1.20:5173`. This plain HTTP address is for preview; iPhone Home Screen installation and offline caching require HTTPS.
 
-~~~powershell
-npm run build
-~~~
+Create the production files with `npm run build`. They are written to `dist/`. `npm run preview` serves the production build locally.
 
-The static site and generated offline service worker are written to **dist/**. Use **npm run preview** to view the production build locally.
+## Contacts, chats, and media
 
-## Add the starter contacts and history
+- Use **+** to add a contact. Choose an optional picture from the device. Open a contact to chat; use its name or avatar to edit the saved name, phone number, and picture.
+- Messages are sorted by their saved timestamps and grouped by the device’s local date. The composer **+** lets you add sent or received entries at a chosen time.
+- The attachment menu supports documents, photos and videos, camera capture where available, audio, a location card, a contact card, and historical message entries. The green microphone control records a voice clip where the browser supports `MediaRecorder` and microphone permission is granted.
+- Outgoing double checks are grey until an incoming entry is recorded after them, when they turn blue. Check colors are local display behavior and do not confirm real delivery or reading.
+- In **Communities**, create groups with at least one selected member and an optional group picture, add groups to a community during creation or later, and open a group chat. Use the add-message control in a group header to enter a message from one of its members.
+- In **Updates**, post a photo or video under your own status or a contact’s name. Statuses are removed after 24 hours, including while the app remains open, and can be viewed full screen.
+- The **You** tab contains the app’s information, backup and restore actions, and the clear-data option.
 
-The public app starts with an empty chat list. The private starter file is kept separate so contact details and message text are not published with the app.
+## Backups and the starter file
 
-1. Open **You → Import or restore a backup** on the device that will use the app.
-2. Select **Aashna-Mam-local-starter.json** from Files.
-3. The app restores seven contacts and the two complete messages shown in the reference: 8 October 2026 at 8:27 PM and 9 October 2026 at 8:19 PM (India local time).
+Use **You → Export a backup** to download a JSON file containing saved contacts, messages, attachments, statuses that have not expired, groups, and communities. Keep that file private: it can contain phone numbers and media. Use **You → Import or restore a backup** on the device where it should be restored. Import replaces the records currently stored by this app in that browser.
 
-The starter file is outside the project’s public folder and is not included in the production build or GitHub repository. Keep it private when transferring it to the iPhone. Existing version 1 JSON backups remain importable.
+The private starter backup `Aashna-Mam-local-starter.json` is stored outside this project’s public folder. Import it from **You** if you want the reference contacts and initial dated messages. The starter file is not included in the built site or the public GitHub Pages repository.
 
-## Use the app
+## Free GitHub Pages deployment
 
-- The **Chats** list includes every saved contact. Contacts with messages sort by their latest message time; contacts without messages follow in their saved order. Search filters names.
-- Tap **+** to add a contact. Open any row to chat. The contact’s avatar/name or information icon opens the contact page, where the name and phone number can be edited, copied, or deleted.
-- Type a message and tap the green send control to save an outgoing message with the current time.
-- Tap the composer **+** to add a message with a chosen date and time, or to enter a received message at the current or a selected earlier time. Choose **Sent** or **Received** in the form.
-- Messages are grouped by the device’s local date. Long-press a message (or use its focused delete action) to delete it after confirmation.
-- **Updates**, **Calls**, and **Communities** are visual tabs. **Chats** and **You** are the working tabs.
-- The **You** tab explains the simulator, offers backup export/import, and can clear all app data from the current browser.
+The production site is published at [prajjwalsingh628.github.io/local-message-simulator](https://prajjwalsingh628.github.io/local-message-simulator/). GitHub Pages serves only the static application files. Each person’s contacts and chat records stay in that person’s browser storage.
 
-The app does not call, text, contact, or message any phone number. The two grey checks are decorative only. Backups contain names, phone numbers, and message text; keep backup files private. Moving to another device requires manual export and import and does not synchronize data.
-
-## Free HTTPS deployment
-
-The app is published on free GitHub Pages:
-
-**https://prajjwalsingh628.github.io/local-message-simulator/**
-
-To publish changes from a GitHub repository:
-
-1. Upload the project source files to a GitHub repository; do not upload the sibling starter JSON or any exported backup.
-2. Open **Settings → Pages** and select **GitHub Actions** as the publishing source.
-3. Push to **main** and wait for the included **Build and publish** workflow to finish.
-4. Open the HTTPS address under **Settings → Pages** or in the workflow summary.
-
-The deployed files contain only the app shell and assets. User contacts and conversations remain in each device’s IndexedDB. No paid plan, server, custom domain, or database is needed.
+To publish a new source revision, push the project to the repository’s `main` branch and let the included **Build and publish** GitHub Actions workflow finish. The repository must have **Settings → Pages → GitHub Actions** selected. No paid plan or backend is needed.
 
 ## Install on iPhone
 
-1. Open the HTTPS URL in Safari.
-2. Tap **Share → Add to Home Screen → Add**. Leave **Open as Web App** enabled if Safari shows that option.
-3. Launch the Home Screen app once while online so the service worker can cache its shell.
-4. Use **You → Import or restore a backup** to load the starter file or a private backup.
-5. To check offline shell support, close the app, enable Airplane Mode, and reopen it. The interface shell should load; new site updates need a connection.
+1. Open the HTTPS site in Safari.
+2. Tap **Share → Add to Home Screen → Add**. Leave **Open as Web App** enabled if Safari offers it.
+3. Open the new Home Screen app once while online so its application shell can be cached.
+4. To confirm offline shell support, close it, enable Airplane Mode, and open it again. Previously saved IndexedDB content is available on that device; app updates require a connection.
 
-The app requests no camera, microphone, or phone permissions. Its custom green chat-and-phone icon is bundled with the app. If an older install keeps its previous icon, export a backup, remove the Home Screen shortcut, then add the app again from Safari and restore the backup.
-
-## Local network preview
-
-For a quick preview from an iPhone on the same Wi-Fi:
-
-1. Run **npm ci** once on Windows.
-2. Start Vite with **npm run dev -- --host 0.0.0.0**.
-3. Run **ipconfig** and note the laptop’s IPv4 address.
-4. Open **http://LAPTOP-IP:5173** in iPhone Safari.
-
-This is for layout checks. A plain local IP over HTTP is not a secure origin for service-worker installation; use the free HTTPS deployment for installation and offline use.
-
-## Privacy
-
-- No analytics, advertisements, trackers, messaging APIs, SMS, calls, remote database, or account sync are included.
-- Only the static app shell is hosted. Contact data and message content are stored in IndexedDB on the device using the app.
-- Import/export is a manual file operation. The simulator’s inbound messages are written by the user, not received from a network.
+The app asks for microphone or camera access only when you choose voice recording or camera capture. Media and messages are stored in that browser and are not synchronized to other devices.
