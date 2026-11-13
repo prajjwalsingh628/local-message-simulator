@@ -91,6 +91,16 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
+let deferredInstallPrompt: InstallPromptEvent | null = null;
+if (typeof window !== 'undefined') {
+  // Capture this before React effects run so Chrome's one-shot install event is never missed.
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event as InstallPromptEvent;
+    window.dispatchEvent(new Event('app-install-prompt-ready'));
+  });
+}
+
 function sortMessages(items: Message[]): Message[] {
   return [...items].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
 }
@@ -1161,7 +1171,7 @@ function App() {
   const [storageError, setStorageError] = useState('');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => deferredInstallPrompt);
   const [isInstalled, setIsInstalled] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [entryRequest, setEntryRequest] = useState<{ direction: Direction; currentTime: boolean } | null>(null);
@@ -1224,12 +1234,12 @@ function App() {
 
   useEffect(() => {
     const updateInstalled = () => setIsInstalled(window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
-    const capturePrompt = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPromptEvent); };
-    const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); showToast('App installed.'); };
+    const capturePrompt = () => setInstallPrompt(deferredInstallPrompt);
+    const onInstalled = () => { deferredInstallPrompt = null; setIsInstalled(true); setInstallPrompt(null); showToast('App installed.'); };
     updateInstalled();
-    window.addEventListener('beforeinstallprompt', capturePrompt);
+    window.addEventListener('app-install-prompt-ready', capturePrompt);
     window.addEventListener('appinstalled', onInstalled);
-    return () => { window.removeEventListener('beforeinstallprompt', capturePrompt); window.removeEventListener('appinstalled', onInstalled); };
+    return () => { window.removeEventListener('app-install-prompt-ready', capturePrompt); window.removeEventListener('appinstalled', onInstalled); };
   }, [showToast]);
 
   const installApp = async (): Promise<boolean> => {
@@ -1237,6 +1247,7 @@ function App() {
     if (!installPrompt) return false;
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
+    deferredInstallPrompt = null;
     setInstallPrompt(null);
     if (choice.outcome === 'accepted') setIsInstalled(true);
     return true;
