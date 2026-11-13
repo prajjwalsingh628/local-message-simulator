@@ -35,13 +35,13 @@ Create the production files with `npm run build`. They are written to `dist/`. `
 
 ## Contacts, chats, and media
 
-- Use **+** to add a contact. Choose an optional picture from the device. Open a contact to chat; use its name or avatar to edit the saved name, phone number, and picture.
-- Messages are sorted by their saved timestamps and grouped by the device’s local date. The composer **+** lets you add sent or received entries at a chosen time.
-- The attachment menu supports documents, photos and videos, camera capture where available, audio, a location card, a contact card, and historical message entries. The green microphone control records a voice clip where the browser supports `MediaRecorder` and microphone permission is granted.
+- Use the home **+** to add a contact. Choose a picture, crop it to a square, and see it as a circle. Contact information lets you update the name, number, and picture later.
+- Messages are sorted by their saved timestamps and grouped by the device’s local date. The composer **+** has one action: **Add message with date & time**. Its form lets you choose Sent or Received and set the timestamp.
+- The camera button beside the microphone opens the device camera or photo picker where supported. The green microphone control records a voice clip where the browser supports `MediaRecorder` and microphone permission is granted. Previously supported file/media entries remain readable from chat history.
 - Outgoing double checks are grey until an incoming entry is recorded after them, when they turn blue. Check colors are local display behavior and do not confirm real delivery or reading.
 - In **Communities**, create groups with at least one selected member and an optional group picture, add groups to a community during creation or later, and open a group chat. Use the add-message control in a group header to enter a message from one of its members.
 - In **Updates**, post a photo or video under your own status or a contact’s name. Statuses are removed after 24 hours, including while the app remains open, and can be viewed full screen.
-- The **You** tab contains the app’s information, backup and restore actions, and the clear-data option.
+- The **You** tab lets the user edit their profile name, photo, phone number, and About text. Photos can be square-cropped. Its iOS-style settings pages save switches and choices, including Dark, Light, and System appearance. App information, backup and restore, and clear-data options are also there.
 
 ## Backups and the starter file
 
