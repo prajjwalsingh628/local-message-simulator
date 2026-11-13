@@ -2249,7 +2249,14 @@ button.contact-row {
 }
 
 .profile-screen .settings-scroll {
-  padding-bottom: 4px;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  padding: 14px 16px 24px;
 }
 
 .delete-contact-row {
@@ -2461,7 +2468,7 @@ button.contact-row {
 [data-theme="light"] .photo-edit-button { color:#26332a; background:#e5ebe6; }
 [data-theme="light"] .tool-list button,[data-theme="light"] .tool-list button strong { color:#17211a; }
 [data-theme="light"] .profile-subpage-header { background:rgba(248,248,245,.96); }
-.install-app-row { margin:8px 16px calc(18px + env(safe-area-inset-bottom)); border:1px solid var(--line); border-radius:16px; background:var(--surface-1); }
+.install-app-row { margin:4px 0 0; border:1px solid var(--line); border-radius:15px; background:var(--surface-1); }
 .install-app-row:active { transform:scale(.99); }
 .install-help { display:flex; flex-direction:column; gap:12px; color:var(--text); font-size:14px; line-height:1.5; }
 .install-help p { margin:0; padding:13px; border:1px solid var(--line); border-radius:14px; background:var(--surface-1); }
@@ -2486,3 +2493,4 @@ button.contact-row {
   .call-pill { height: 36px; padding: 1px 3px; }
   .call-pill button { width: 30px; height: 31px; }
 }
+
