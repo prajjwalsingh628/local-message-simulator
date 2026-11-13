@@ -880,8 +880,8 @@ function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePre
           <button className="settings-row" type="button" onClick={onExport} disabled={!hasData}><span className="settings-row-icon"><Download size={18} /></span><span><strong>Export a backup</strong><small>Save your profile, preferences, contacts and chats</small></span><ChevronRight size={17} /></button>
           <button className="settings-row" type="button" onClick={onImport}><span className="settings-row-icon"><Upload size={18} /></span><span><strong>Import or restore a backup</strong><small>Restore saved records from a backup file</small></span><ChevronRight size={17} /></button>
           <button className="settings-row reset-row" type="button" onClick={onReset} disabled={!hasData}><span className="settings-row-icon"><Trash2 size={18} /></span><span><strong>Clear app data</strong><small>Remove saved profile, preferences and chats</small></span><ChevronRight size={17} /></button>
+          <button className="settings-row install-app-row" type="button" onClick={() => void installApp()}><span className="settings-row-icon"><Download size={18} /></span><span><strong>{isInstalled ? 'App installed' : 'Install app'}</strong><small>{isInstalled ? 'This app is on your Home Screen' : 'Add this app to your Home Screen'}</small></span><ChevronRight size={17} /></button>
         </section>
-        <button className="settings-row install-app-row" type="button" onClick={() => void installApp()}><span className="settings-row-icon"><Download size={18} /></span><span><strong>{isInstalled ? 'App installed' : 'Install app'}</strong><small>{isInstalled ? 'This app is on your Home Screen' : 'Add this app to your Home Screen'}</small></span><ChevronRight size={17} /></button>
       </> : <>
         <div className="settings-page-intro">{page === 'Chats' ? 'Personalize your conversations.' : page === 'Privacy' ? 'Choose how your information and activity appear.' : `Manage ${page.toLowerCase()} preferences.`}</div>
         {(SETTINGS_ROWS[page] ?? [{ label: page, icon: <Info size={18} /> }]).map((row) => {
@@ -1567,3 +1567,4 @@ function App() {
 }
 
 export default App;
+
