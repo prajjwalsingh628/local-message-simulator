@@ -9,7 +9,6 @@ import {
   CheckCheck,
   ChevronRight,
   CircleDashed,
-  CirclePlus,
   CircleUserRound,
   Bell,
   LockKeyhole,
@@ -31,6 +30,9 @@ import {
   MessageCircle,
   MoreHorizontal,
   Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PhoneMissed,
   Plus,
   Search,
   Send,
@@ -52,6 +54,7 @@ import {
   readAllData,
   removeContactAndMessages,
   removeMessage,
+  removeGroup,
   replaceLocalData,
   saveCommunity,
   saveContact,
@@ -61,13 +64,15 @@ import {
   saveStatus,
   savePreference,
   saveAppProfile,
-  updateStatusViewed
+  updateStatusViewed,
+  saveCall,
+  removeCall
 } from './domain/db';
 import { makeBackup, validateBackup } from './domain/backup';
 import { fileToDataUrl, formatBytes } from './domain/media';
-import type { AppPreferenceValue, AppProfile, Community, Contact, Group, GroupMessage, Message, MessageAttachment, StatusUpdate } from './domain/types';
+import type { AppPreferenceValue, AppProfile, CallRecord, Community, Contact, Group, GroupMessage, Message, MessageAttachment, StatusUpdate } from './domain/types';
 
-type Screen = 'home' | 'conversation' | 'contact' | 'profile' | 'updates' | 'communities' | 'group-conversation';
+type Screen = 'home' | 'conversation' | 'contact' | 'profile' | 'updates' | 'calls' | 'communities' | 'group-conversation';
 type Direction = Message['direction'];
 type Popup = 'attachments' | null;
 type AttachmentType = 'image' | 'video' | 'document' | 'audio';
@@ -182,13 +187,14 @@ function IconButton({
   );
 }
 
-type MainTab = 'home' | 'profile' | 'updates' | 'communities';
+type MainTab = 'home' | 'profile' | 'updates' | 'calls' | 'communities';
 
-function BottomNavigation({ current, onHome, onProfile, onUpdates, onCommunities }: {
+function BottomNavigation({ current, onHome, onProfile, onUpdates, onCalls, onCommunities }: {
   current: MainTab;
   onHome: () => void;
   onProfile: () => void;
   onUpdates: () => void;
+  onCalls: () => void;
   onCommunities: () => void;
 }) {
   return (
@@ -196,7 +202,7 @@ function BottomNavigation({ current, onHome, onProfile, onUpdates, onCommunities
       <button type="button" className={'nav-item ' + (current === 'updates' ? 'active' : '')} aria-current={current === 'updates' ? 'page' : undefined} onClick={onUpdates} aria-label="Updates">
         <CircleDashed size={22} strokeWidth={1.9} /><span>Updates</span>
       </button>
-      <button type="button" className="nav-item" disabled aria-disabled="true" aria-label="Calls, unavailable">
+      <button type="button" className={'nav-item ' + (current === 'calls' ? 'active' : '')} aria-current={current === 'calls' ? 'page' : undefined} onClick={onCalls} aria-label="Calls">
         <Phone size={21} strokeWidth={1.9} /><span>Calls</span>
       </button>
       <button type="button" className={'nav-item ' + (current === 'communities' ? 'active' : '')} aria-current={current === 'communities' ? 'page' : undefined} onClick={onCommunities} aria-label="Communities">
@@ -234,22 +240,30 @@ function latestMessageByContact(messages: Message[]): Map<string, Message> {
 function HomeScreen({
   contacts,
   messages,
+  groups,
+  groupMessages: groupMessageList,
   search,
   setSearch,
   onOpenContact,
+  onOpenGroup,
   onProfile,
   onUpdates,
+  onCalls,
   onCommunities,
   onAddContact,
   onToast
 }: {
   contacts: Contact[];
   messages: Message[];
+  groups: Group[];
+  groupMessages: GroupMessage[];
   search: string;
   setSearch: (value: string) => void;
   onOpenContact: (id: string) => void;
+  onOpenGroup: (id: string) => void;
   onProfile: () => void;
   onUpdates: () => void;
+  onCalls: () => void;
   onCommunities: () => void;
   onAddContact: () => void;
   onToast: (value: string) => void;
@@ -300,6 +314,17 @@ function HomeScreen({
           <span>Archived</span>
         </div>
         <div className="contact-list-scroll">
+          {groups.length > 0 && <>
+            <div className="list-section-title-row"><h3 className="list-section-title">GROUPS</h3></div>
+            {groups.filter((group) => group.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).map((group) => {
+              const latest = groupMessageList.filter((message) => message.groupId === group.id).at(-1);
+              return <button type="button" className="contact-row" key={group.id} onClick={() => onOpenGroup(group.id)}>
+                <span className="community-icon small">{group.photoDataUrl ? <img src={group.photoDataUrl} alt="" /> : <UsersRound />}</span>
+                <span className="contact-copy"><span className="contact-name">{group.name}</span><span className="contact-preview">{latest?.text || `${group.memberIds.length} members`}</span></span>
+                <span className="contact-trailing"><span className="contact-time">{latest ? formatTime(latest.createdAt) : ''}</span></span>
+              </button>;
+            })}
+          </>}
           {visibleContacts.map((contact) => {
             const message = latest.get(contact.id);
             return (
@@ -326,7 +351,7 @@ function HomeScreen({
         </div>
       </div>
 
-      <BottomNavigation current="home" onHome={() => undefined} onProfile={onProfile} onUpdates={onUpdates} onCommunities={onCommunities} />
+      <BottomNavigation current="home" onHome={() => undefined} onProfile={onProfile} onUpdates={onUpdates} onCalls={onCalls} onCommunities={onCommunities} />
     </section>
   );
 }
@@ -604,6 +629,7 @@ function ConversationScreen({
 
 function PhotoCropDialog({ source, onCancel, onApply }: { source: string; onCancel: () => void; onApply: (photo: string) => void }) {
   const imageRef = useRef<HTMLImageElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
@@ -621,9 +647,12 @@ function PhotoCropDialog({ source, onCancel, onApply }: { source: string; onCanc
     context.drawImage(image, x, y, side, side, 0, 0, 640, 640);
     onApply(canvas.toDataURL('image/jpeg', 0.88));
   };
-  const previewScale = `scale(${zoom}) translate(${offsetX * -0.35}%, ${offsetY * -0.35}%)`;
+  const side = dimensions.width && dimensions.height ? Math.min(dimensions.width, dimensions.height) / zoom : 0;
+  const scale = side ? 280 / side : 1;
+  const x = dimensions.width ? (dimensions.width - side) * (offsetX + 100) / 200 : 0;
+  const y = dimensions.height ? (dimensions.height - side) * (offsetY + 100) / 200 : 0;
   return <Dialog title="Crop profile photo" onClose={onCancel} compact>
-    <div className="crop-preview"><img ref={imageRef} src={source} alt="Crop preview" style={{ transform: previewScale }} onError={() => setError('This image could not be opened.')} /></div>
+    <div className="crop-preview"><img ref={imageRef} src={source} alt="Crop preview" style={{ width: dimensions.width ? dimensions.width * scale : undefined, height: dimensions.height ? dimensions.height * scale : undefined, left: dimensions.width ? -x * scale : 0, top: dimensions.height ? -y * scale : 0 }} onLoad={(event) => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setError('This image could not be opened.')} /></div>
     <p className="crop-instruction">Move the crop with the controls, then adjust the zoom.</p>
     <label className="crop-control"><span>Horizontal</span><input type="range" min="-100" max="100" value={offsetX} onChange={(event) => setOffsetX(Number(event.target.value))} /></label>
     <label className="crop-control"><span>Vertical</span><input type="range" min="-100" max="100" value={offsetY} onChange={(event) => setOffsetY(Number(event.target.value))} /></label>
@@ -660,6 +689,7 @@ function ContactScreen({
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const mediaItems = messages.flatMap((message) => (message.attachments ?? []).map((attachment) => ({ message, attachment }))).filter(({ attachment }) => ['image', 'video', 'document', 'audio'].includes(attachment.type));
 
@@ -713,8 +743,7 @@ function ContactScreen({
       <div className="detail-scroll">
         <div className="profile-card">
           <div className="contact-photo-wrap">
-            <Avatar contact={{ ...contact, photoDataUrl }} />
-            <button type="button" className="photo-edit-button" aria-label="Choose profile photo" onClick={() => { setEditing(true); photoInputRef.current?.click(); }}><Camera size={15} /></button>
+            <button type="button" className="contact-photo-open" aria-label="View profile photo" onClick={() => setPhotoPreviewOpen(true)}><Avatar contact={{ ...contact, photoDataUrl }} /></button>
             <input ref={photoInputRef} className="visually-hidden" type="file" accept="image/*" aria-label="Choose profile photo" onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
@@ -767,6 +796,7 @@ function ContactScreen({
         )}
       </div>
       {cropSource && <PhotoCropDialog source={cropSource} onCancel={() => { URL.revokeObjectURL(cropSource); setCropSource(null); }} onApply={(photo) => { setPhotoDataUrl(photo); URL.revokeObjectURL(cropSource); setCropSource(null); }} />}
+      {photoPreviewOpen && <Dialog title={contact.name} onClose={() => setPhotoPreviewOpen(false)} compact><div className="contact-photo-viewer">{photoDataUrl ? <img src={photoDataUrl} alt={`${contact.name} profile`} /> : <div className="contact-photo-placeholder"><Avatar contact={{ ...contact, photoDataUrl: null }} /></div>}<button className="primary-action" type="button" onClick={() => { setPhotoPreviewOpen(false); photoInputRef.current?.click(); }}>Edit photo</button></div></Dialog>}
       {mediaOpen && <Dialog title="Media, links and docs" onClose={() => setMediaOpen(false)} compact><div className="shared-media-list">{mediaItems.length ? mediaItems.map(({ message, attachment }) => <div key={attachment.id} className="shared-media-item">{attachment.type === 'image' && attachment.dataUrl ? <img src={attachment.dataUrl} alt={attachment.name ?? 'Shared image'} /> : attachment.type === 'video' && attachment.dataUrl ? <video src={attachment.dataUrl} controls playsInline /> : <span>{attachment.name ?? attachment.type}</span>}<small>{formatTime(message.createdAt)} · {attachment.name ?? attachment.type}</small></div>) : <p className="settings-note">No shared media in this chat yet.</p>}</div></Dialog>}
     </section>
   );
@@ -806,11 +836,11 @@ const SETTINGS_ROWS: Record<string, { label: string; icon: ReactNode; kind?: 'to
   'Tell a friend': [{ label: 'Share this app', icon: <Upload size={18} /> }]
 };
 
-function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePreference, onHome, onUpdates, onCommunities, onExport, onImport, onReset, onToast }: {
+function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePreference, onHome, onUpdates, onCalls, onCommunities, onExport, onImport, onReset, onToast }: {
   hasData: boolean; profile: AppProfile; preferences: Record<string, AppPreferenceValue>;
   onSaveProfile: (value: AppProfile) => Promise<void>;
   onSavePreference: (id: string, value: AppPreferenceValue) => Promise<void>;
-  onHome: () => void; onUpdates: () => void; onCommunities: () => void;
+  onHome: () => void; onUpdates: () => void; onCalls: () => void; onCommunities: () => void;
   onExport: () => void; onImport: () => void; onReset: () => void; onToast: (text: string) => void;
 }) {
   const [page, setPage] = useState('');
@@ -828,7 +858,7 @@ function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePre
     ['PREFERENCES', ['Chats', 'Notifications', 'Storage and data', 'Help', 'Tell a friend']]
   ] as const;
   return <section className="screen detail-screen profile-screen" aria-label="You and settings">
-    <header className="profile-header"><h1>{page || 'You'}</h1>{page && <button className="settings-back" type="button" onClick={closePage}><ArrowLeft size={19} /> Back</button>}</header>
+    <header className={'profile-header ' + (page ? 'profile-subpage-header' : '')}>{page ? <><button className="settings-back" type="button" onClick={closePage}><ArrowLeft size={19} /> Back</button><h1>{page}</h1><span className="header-spacer" /></> : <h1>You</h1>}</header>
     <div className="settings-scroll">
       {!page ? <>
         <button className="self-profile-card" type="button" onClick={() => { setDraft(profile); setEditing(true); }}>
@@ -852,7 +882,7 @@ function ProfileScreen({ hasData, profile, preferences, onSaveProfile, onSavePre
         {page === 'Privacy' && <div className="settings-note privacy-note"><strong>Read receipts</strong><p>These controls are saved on this device. They do not affect a real messaging account.</p></div>}
       </>}
     </div>
-    {!page && <BottomNavigation current="profile" onHome={onHome} onProfile={() => undefined} onUpdates={onUpdates} onCommunities={onCommunities} />}
+    {!page && <BottomNavigation current="profile" onHome={onHome} onProfile={() => undefined} onUpdates={onUpdates} onCalls={onCalls} onCommunities={onCommunities} />}
     {editing && <Dialog title="Edit profile" onClose={() => setEditing(false)} compact><form className="edit-contact-form" onSubmit={(event) => void saveProfile(event)}>
       <div className="new-contact-photo"><button type="button" onClick={() => photoRef.current?.click()} aria-label="Choose profile photo">{draft.photoDataUrl ? <img src={draft.photoDataUrl} alt="" /> : <UserRound size={30} />}<span><Camera size={14} /></span></button><small>Profile photo</small><input ref={photoRef} className="visually-hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) setCropSource(URL.createObjectURL(file)); }} /></div>
       <label><span>Name</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required /></label><label><span>About</span><input value={draft.about} onChange={(event) => setDraft({ ...draft, about: event.target.value })} /></label><label><span>Phone number</span><input value={draft.phoneNumber} onChange={(event) => setDraft({ ...draft, phoneNumber: event.target.value })} inputMode="tel" /></label><div className="form-actions"><button type="button" className="secondary-action" onClick={() => setEditing(false)}>Cancel</button><button type="submit" className="primary-action">Save</button></div>
@@ -964,9 +994,9 @@ function MessageEntryDialog({
   );
 }
 
-function UpdatesScreen({ contacts, statuses, onAddStatus, onOpenStatus, onHome, onCommunities, onProfile }: {
+function UpdatesScreen({ contacts, statuses, onAddStatus, onOpenStatus, onHome, onCalls, onCommunities, onProfile }: {
   contacts: Contact[]; statuses: StatusUpdate[]; onAddStatus: (ownerId: string, file: File, caption: string) => Promise<void>;
-  onOpenStatus: (status: StatusUpdate) => void; onHome: () => void; onCommunities: () => void; onProfile: () => void;
+  onOpenStatus: (status: StatusUpdate) => void; onHome: () => void; onCalls: () => void; onCommunities: () => void; onProfile: () => void;
 }) {
   const [ownerId, setOwnerId] = useState('me');
   const [caption, setCaption] = useState('');
@@ -996,7 +1026,7 @@ function UpdatesScreen({ contacts, statuses, onAddStatus, onOpenStatus, onHome, 
       <h3 className="list-section-title">VIEWED UPDATES</h3>
       {others.filter((item) => item.viewed).length ? others.filter((item) => item.viewed).map((item) => statusRow(item.contact, item.list, true)) : <p className="status-empty">No viewed updates yet.</p>}
     </div>
-    <BottomNavigation current="updates" onHome={onHome} onProfile={onProfile} onUpdates={() => undefined} onCommunities={onCommunities} />
+    <BottomNavigation current="updates" onHome={onHome} onProfile={onProfile} onUpdates={() => undefined} onCalls={onCalls} onCommunities={onCommunities} />
     {dialogOpen && <Dialog title="Add status" onClose={() => setDialogOpen(false)} compact>
       <form className="edit-contact-form" onSubmit={(event) => { event.preventDefault(); inputRef.current?.click(); }}>
         <label><span>Post as</span><select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}><option value="me">My status</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
@@ -1025,10 +1055,49 @@ function StatusViewer({ status, allStatuses, onClose, onSelect, onViewed }: { st
   </div>;
 }
 
-function CommunitiesScreen({ contacts, groups, groupMessages, communities, onCreateGroup, onCreateCommunity, onUpdateCommunityGroups, onOpenGroup, onHome, onUpdates, onProfile }: {
-  contacts: Contact[]; groups: Group[]; groupMessages: GroupMessage[]; communities: Community[];
+function CallsScreen({ contacts, calls, onAdd, onDelete, onHome, onProfile, onUpdates, onCommunities }: {
+  contacts: Contact[]; calls: CallRecord[];
+  onAdd: (entry: Omit<CallRecord, 'id'>) => Promise<void>;
+  onDelete: (id: string) => void;
+  onHome: () => void; onProfile: () => void; onUpdates: () => void; onCommunities: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [contactId, setContactId] = useState(contacts[0]?.id ?? '');
+  const [kind, setKind] = useState<CallRecord['kind']>('outgoing');
+  const [when, setWhen] = useState(toLocalInputValue(new Date()));
+  const [duration, setDuration] = useState('0');
+  const [video, setVideo] = useState(false);
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!contactId) return;
+    await onAdd({ contactId, kind, createdAt: new Date(when).toISOString(), durationSeconds: Math.max(0, Number(duration) || 0), video });
+    setAdding(false);
+  };
+  return <section className="screen detail-screen" aria-label="Calls">
+    <header className="profile-header"><h1>Calls</h1><button className="add-call-button" type="button" aria-label="Add call record" onClick={() => setAdding(true)}><Plus /></button></header>
+    <div className="settings-scroll calls-list">{calls.length ? calls.map((call) => {
+      const contact = contacts.find((item) => item.id === call.contactId);
+      if (!contact) return null;
+      const Icon = call.kind === 'missed' ? PhoneMissed : call.kind === 'received' ? PhoneIncoming : PhoneOutgoing;
+      const mins = Math.floor(call.durationSeconds / 60); const secs = call.durationSeconds % 60;
+      return <article className="call-row" key={call.id}><Avatar contact={contact} /><div className="call-row-copy"><strong>{contact.name}</strong><span className={'call-kind ' + (call.kind === 'missed' ? 'missed' : '')}><Icon size={15} />{call.kind === 'received' ? 'Incoming' : call.kind === 'missed' ? 'Missed' : 'Outgoing'} {call.video ? 'video call' : 'audio call'}{call.durationSeconds > 0 ? ` · ${mins}:${String(secs).padStart(2, '0')}` : ''}</span></div><time>{new Date(call.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} {formatTime(call.createdAt)}</time><IconButton label={`Delete call with ${contact.name}`} onClick={() => onDelete(call.id)}><Trash2 size={16} /></IconButton></article>;
+    }) : <div className="empty-contacts"><span className="empty-emblem"><Phone size={22} /></span><strong>No calls yet</strong><p>Add a call record to keep a visual call history on this device.</p></div>}</div>
+    <BottomNavigation current="calls" onHome={onHome} onProfile={onProfile} onUpdates={onUpdates} onCalls={() => undefined} onCommunities={onCommunities} />
+    {adding && <Dialog title="Add call record" onClose={() => setAdding(false)} compact><form className="edit-contact-form" onSubmit={(event) => void save(event)}>
+      <label><span>Contact</span><select value={contactId} onChange={(event) => setContactId(event.target.value)} required>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>
+      <label><span>Call type</span><select value={kind} onChange={(event) => setKind(event.target.value as CallRecord['kind'])}><option value="outgoing">Outgoing</option><option value="received">Received</option><option value="missed">Missed</option></select></label>
+      <label><span>Date and time</span><input type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} required /></label>
+      <label><span>Duration in seconds</span><input type="number" min="0" value={duration} onChange={(event) => setDuration(event.target.value)} /></label>
+      <label className="inline-check"><input type="checkbox" checked={video} onChange={(event) => setVideo(event.target.checked)} /> Video call</label>
+      <div className="form-actions"><button className="secondary-action" type="button" onClick={() => setAdding(false)}>Cancel</button><button className="primary-action" type="submit">Save call</button></div>
+    </form></Dialog>}
+  </section>;
+}
+
+function CommunitiesScreen({ contacts, groups, communities, onCreateGroup, onCreateCommunity, onUpdateCommunityGroups, onOpenGroup, onHome, onUpdates, onCalls, onProfile }: {
+  contacts: Contact[]; groups: Group[]; communities: Community[];
   onCreateGroup: (name: string, members: string[], photoDataUrl: string | null) => Promise<void>; onCreateCommunity: (name: string, groupIds: string[]) => Promise<void>; onUpdateCommunityGroups: (communityId: string, groupIds: string[]) => Promise<void>; onOpenGroup: (id: string) => void;
-  onHome: () => void; onUpdates: () => void; onProfile: () => void;
+  onHome: () => void; onUpdates: () => void; onCalls: () => void; onProfile: () => void;
 }) {
   const [dialog, setDialog] = useState<'group' | 'community' | 'add-groups' | null>(null);
   const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null);
@@ -1044,17 +1113,23 @@ function CommunitiesScreen({ contacts, groups, groupMessages, communities, onCre
   };
   return <section className="screen detail-screen communities-screen" aria-label="Communities"><header className="profile-header"><h1>Communities</h1></header><div className="settings-scroll">
     <button className="community-create-row" type="button" onClick={() => setDialog('community')}><span className="community-icon"><UsersRound /></span><span><strong>New community</strong><small>Bring groups together</small></span><Plus /></button>
-    <div className="list-section-title-row"><h3 className="list-section-title">GROUPS</h3><button type="button" onClick={() => setDialog('group')}>New group</button></div>
-    {groups.map((group) => { const latest = groupMessages.filter((item) => item.groupId === group.id).at(-1); return <button type="button" className="community-group-row" key={group.id} onClick={() => onOpenGroup(group.id)}><span className="community-icon">{group.photoDataUrl ? <img src={group.photoDataUrl} alt="" /> : <UsersRound />}</span><span><strong>{group.name}</strong><small>{latest?.text || `${group.memberIds.length} members`}</small></span><ChevronRight /></button>; })}
+    <button className="community-create-row" type="button" onClick={() => setDialog('group')}><span className="community-icon"><UsersRound /></span><span><strong>New group</strong><small>Group chats appear in Chats</small></span><Plus /></button>
+    {groups.length > 0 && <p className="settings-note">Groups are listed in Chats. Add them to a community below.</p>}
     {communities.map((community) => <section className="community-card" key={community.id}><h2><UsersRound size={19} />{community.name}</h2>{community.groupIds.length ? community.groupIds.map((id) => { const group = groups.find((item) => item.id === id); return group ? <button type="button" key={id} onClick={() => onOpenGroup(id)}>{group.name}<ChevronRight size={16} /></button> : null; }) : <p>No groups added yet.</p>}<button type="button" className="community-add-groups" onClick={() => { setEditingCommunityId(community.id); setGroupIds(community.groupIds); setDialog('add-groups'); }}>Add groups</button></section>)}
-  </div><BottomNavigation current="communities" onHome={onHome} onProfile={onProfile} onUpdates={onUpdates} onCommunities={() => undefined} />
+  </div><BottomNavigation current="communities" onHome={onHome} onProfile={onProfile} onUpdates={onUpdates} onCalls={onCalls} onCommunities={() => undefined} />
   {dialog && <Dialog title={dialog === 'group' ? 'New group' : dialog === 'community' ? 'New community' : 'Add groups'} onClose={() => { setDialog(null); setEditingCommunityId(null); }} compact><form className="edit-contact-form" onSubmit={(event) => void create(event)}>{dialog !== 'add-groups' && <label><span>{dialog === 'group' ? 'Group name' : 'Community name'}</span><input value={name} onChange={(event) => setName(event.target.value)} required autoFocus /></label>}{dialog === 'group' && <div className="group-photo-picker"><button type="button" onClick={(event) => (event.currentTarget.nextElementSibling as HTMLInputElement).click()}>{groupPhoto ? <img src={groupPhoto} alt="" /> : <Camera size={18} />}<span>Group photo</span></button><input className="visually-hidden" type="file" accept="image/*" onChange={(event) => { const file=event.target.files?.[0]; event.target.value=''; if(file) void fileToDataUrl(file,640).then(setGroupPhoto); }} /></div>}{dialog === 'group' ? <fieldset className="member-picker"><legend>Add participants</legend>{contacts.map((contact) => <label key={contact.id}><input type="checkbox" checked={members.includes(contact.id)} onChange={(event) => { setMembers((current) => event.target.checked ? [...current, contact.id] : current.filter((id) => id !== contact.id)); setMemberError(false); }} />{contact.name}</label>)}</fieldset> : <fieldset className="member-picker"><legend>Add groups</legend>{groups.length ? groups.map((group) => <label key={group.id}><input type="checkbox" checked={groupIds.includes(group.id)} onChange={(event) => setGroupIds((current) => event.target.checked ? [...current, group.id] : current.filter((id) => id !== group.id))} />{group.name}</label>) : <small>Create a group first.</small>}</fieldset>}{memberError && <p className="form-error" role="alert">Select at least one participant.</p>}<div className="form-actions"><button type="button" className="secondary-action" onClick={() => { setDialog(null); setEditingCommunityId(null); }}>Cancel</button><button type="submit" className="primary-action">{dialog === 'add-groups' ? 'Save groups' : 'Create'}</button></div></form></Dialog>}
   </section>;
 }
 
-function GroupConversationScreen({ group, contacts, messages, onBack, onSend, onReceive }: { group: Group; contacts: Contact[]; messages: GroupMessage[]; onBack: () => void; onSend: (text: string) => Promise<void>; onReceive: (text: string, senderId: string) => Promise<void> }) {
-  const [draft, setDraft] = useState(''); const [incomingOpen, setIncomingOpen] = useState(false); const [incomingText, setIncomingText] = useState(''); const [senderId, setSenderId] = useState(group.memberIds[0] ?? '');
-  return <section className="screen conversation-screen"><header className="conversation-header"><IconButton label="Back" onClick={onBack} className="back-button"><ArrowLeft /></IconButton><span className="community-icon small">{group.photoDataUrl ? <img src={group.photoDataUrl} alt="" /> : <UsersRound />}</span><strong className="group-chat-title">{group.name}</strong><IconButton label="Add received group message" onClick={() => setIncomingOpen(true)}><CirclePlus size={20} /></IconButton><div className="call-pill"><button disabled aria-label="Video call"><Video /></button><button disabled aria-label="Phone call"><Phone /></button></div></header><div className="conversation-wallpaper"><div className="message-stack">{groupMessages(messages).map((day) => <div className="message-group" key={day.key}><div className="date-divider"><span>{dateHeading(day.entries[0].createdAt)}</span></div>{day.entries.map((message) => <article className={'message-line ' + (message.direction === 'outgoing' ? 'outgoing-line' : 'incoming-line')} key={message.id}><div className="message-bubble">{message.direction === 'incoming' && <strong className="group-sender" style={{ color: message.senderColor }}>{message.senderName}</strong>}{message.text && <p>{message.text}</p>}<div className="message-meta"><time>{formatTime(message.createdAt)}</time>{message.direction === 'outgoing' && <CheckCheck className={'double-check ' + (hasReplyAfter(message.createdAt, messages) ? 'read-check' : '')} size={16} />}</div></div></article>)}</div>)}</div></div><form className="composer-area" onSubmit={(event) => { event.preventDefault(); const text = draft.trim(); if (text) void onSend(text).then(() => setDraft('')); }}><div className="composer-row"><div className="input-shell"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message" rows={1} /></div><button className="send-button" type="submit" disabled={!draft.trim()} aria-label="Send"><Send size={18} /></button></div></form>{incomingOpen && <Dialog title="Add received message" onClose={() => setIncomingOpen(false)} compact><form className="edit-contact-form" onSubmit={(event) => { event.preventDefault(); const member=contacts.find((item) => item.id === senderId); if(member && incomingText.trim()) void onReceive(incomingText.trim(), member.id).then(() => { setIncomingText(''); setIncomingOpen(false); }); }}><label><span>Member</span><select value={senderId} onChange={(event) => setSenderId(event.target.value)} required>{contacts.filter((item) => group.memberIds.includes(item.id)).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>Message</span><textarea rows={3} value={incomingText} onChange={(event) => setIncomingText(event.target.value)} required /></label><div className="form-actions"><button type="button" className="secondary-action" onClick={() => setIncomingOpen(false)}>Cancel</button><button className="primary-action" type="submit" disabled={!senderId}>Add message</button></div></form></Dialog>}</section>;
+function GroupConversationScreen({ group, contacts, messages, onBack, onSend, onReceive, onSaveGroup, onDeleteGroup }: { group: Group; contacts: Contact[]; messages: GroupMessage[]; onBack: () => void; onSend: (text: string) => Promise<void>; onReceive: (text: string, senderId: string) => Promise<void>; onSaveGroup: (group: Group) => Promise<void>; onDeleteGroup: () => void }) {
+  const [draft, setDraft] = useState(''); const [incomingOpen, setIncomingOpen] = useState(false); const [editOpen, setEditOpen] = useState(false); const [incomingText, setIncomingText] = useState(''); const [senderId, setSenderId] = useState(group.memberIds[0] ?? ''); const [name, setName] = useState(group.name); const [members, setMembers] = useState(group.memberIds); const [photo, setPhoto] = useState(group.photoDataUrl ?? null); const fileRef = useRef<HTMLInputElement>(null);
+  const saveGroupDetails = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!name.trim() || !members.length) return; await onSaveGroup({ ...group, name: name.trim(), memberIds: members, photoDataUrl: photo }); setEditOpen(false); };
+  return <section className="screen conversation-screen"><header className="conversation-header"><IconButton label="Back to chats" onClick={onBack} className="back-button"><ArrowLeft /></IconButton><button type="button" className="group-chat-identity" onClick={() => setEditOpen(true)}><span className="community-icon small">{group.photoDataUrl ? <img src={group.photoDataUrl} alt="" /> : <UsersRound />}</span><strong className="group-chat-title">{group.name}</strong></button><div className="call-pill"><button disabled aria-label="Video call"><Video /></button><button disabled aria-label="Phone call"><Phone /></button></div><IconButton label="Group options" onClick={() => setEditOpen(true)}><MoreHorizontal size={20} /></IconButton></header>
+    <div className="conversation-wallpaper"><div className="message-stack">{groupMessages(messages).map((day) => <div className="message-group" key={day.key}><div className="date-divider"><span>{dateHeading(day.entries[0].createdAt)}</span></div>{day.entries.map((message) => { const sender = message.senderContactId ? contacts.find((contact) => contact.id === message.senderContactId) : null; return <article className={'message-line ' + (message.direction === 'outgoing' ? 'outgoing-line' : 'incoming-line')} key={message.id}><div className="message-bubble">{message.direction === 'incoming' && <div className="group-sender-line">{sender && <Avatar contact={sender} />}<strong className="group-sender" style={{ color: message.senderColor }}>{message.senderName}</strong></div>}{message.text && <p>{message.text}</p>}<div className="message-meta"><time>{formatTime(message.createdAt)}</time>{message.direction === 'outgoing' && <CheckCheck className="double-check" size={16} />}</div></div></article>; })}</div>)}</div></div>
+    <form className="composer-area" onSubmit={(event) => { event.preventDefault(); const text = draft.trim(); if (text) void onSend(text).then(() => setDraft('')); }}><div className="composer-row"><IconButton label="Add to group chat" onClick={() => setIncomingOpen(true)}><Plus size={23} /></IconButton><div className="input-shell"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message" rows={1} /></div><button className="send-button" type="submit" disabled={!draft.trim()} aria-label="Send"><Send size={18} /></button></div></form>
+    {incomingOpen && <Dialog title="Add received message" onClose={() => setIncomingOpen(false)} compact><form className="edit-contact-form" onSubmit={(event) => { event.preventDefault(); const member=contacts.find((item) => item.id === senderId); if(member && incomingText.trim()) void onReceive(incomingText.trim(), member.id).then(() => { setIncomingText(''); setIncomingOpen(false); }); }}><label><span>Member</span><select value={senderId} onChange={(event) => setSenderId(event.target.value)} required>{contacts.filter((item) => group.memberIds.includes(item.id)).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>Message</span><textarea rows={3} value={incomingText} onChange={(event) => setIncomingText(event.target.value)} required /></label><div className="form-actions"><button type="button" className="secondary-action" onClick={() => setIncomingOpen(false)}>Cancel</button><button className="primary-action" type="submit" disabled={!senderId}>Add message</button></div></form></Dialog>}
+    {editOpen && <Dialog title="Edit group" onClose={() => setEditOpen(false)} compact><form className="edit-contact-form" onSubmit={(event) => void saveGroupDetails(event)}><div className="group-photo-picker"><button type="button" onClick={() => fileRef.current?.click()}>{photo ? <img src={photo} alt="" /> : <Camera size={18} />}<span>Change group photo</span></button><input ref={fileRef} className="visually-hidden" type="file" accept="image/*" onChange={(event) => { const file=event.target.files?.[0]; event.target.value=''; if(file) void fileToDataUrl(file, 640).then(setPhoto); }} /></div><label><span>Group name</span><input value={name} onChange={(event) => setName(event.target.value)} required /></label><fieldset className="member-picker"><legend>Members</legend>{contacts.map((contact) => <label key={contact.id}><input type="checkbox" checked={members.includes(contact.id)} onChange={(event) => setMembers((current) => event.target.checked ? [...current, contact.id] : current.filter((id) => id !== contact.id))} /><Avatar contact={contact} />{contact.name}</label>)}</fieldset><div className="form-actions"><button type="button" className="danger-action" onClick={onDeleteGroup}>Delete group</button><button type="button" className="secondary-action" onClick={() => setEditOpen(false)}>Cancel</button><button type="submit" className="primary-action" disabled={!name.trim() || !members.length}>Save</button></div></form></Dialog>}
+  </section>;
 }
 
 function App() {
@@ -1066,6 +1141,7 @@ function App() {
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [statuses, setStatuses] = useState<StatusUpdate[]>([]);
+  const [calls, setCalls] = useState<CallRecord[]>([]);
   const [appProfile, setAppProfile] = useState<AppProfile>({ name: 'You', about: 'Available', phoneNumber: '', photoDataUrl: null });
   const [preferences, setPreferences] = useState<Record<string, AppPreferenceValue>>({});
   const [activeContactId, setActiveContactId] = useState<string | null>(null);
@@ -1085,7 +1161,7 @@ function App() {
     const result = await readAllData();
     setContacts(result.contacts);
     setMessages(sortMessages(result.messages));
-    setGroups(result.groups); setGroupMessages(result.groupMessages); setCommunities(result.communities); setStatuses(result.statuses);
+    setGroups(result.groups); setGroupMessages(result.groupMessages); setCommunities(result.communities); setStatuses(result.statuses); setCalls(result.calls);
     setPreferences(Object.fromEntries(result.preferences.map((item) => [item.id, item.value])));
     setAppProfile(result.appProfile ?? { name: 'You', about: 'Available', phoneNumber: '', photoDataUrl: null });
   }, []);
@@ -1097,7 +1173,7 @@ function App() {
         if (cancelled) return;
         setContacts(result.contacts);
         setMessages(sortMessages(result.messages));
-        setGroups(result.groups); setGroupMessages(result.groupMessages); setCommunities(result.communities); setStatuses(result.statuses);
+        setGroups(result.groups); setGroupMessages(result.groupMessages); setCommunities(result.communities); setStatuses(result.statuses); setCalls(result.calls);
         setPreferences(Object.fromEntries(result.preferences.map((item) => [item.id, item.value])));
         setAppProfile(result.appProfile ?? { name: 'You', about: 'Available', phoneNumber: '', photoDataUrl: null });
       })
@@ -1211,6 +1287,21 @@ function App() {
     await saveGroup(group); setGroups((current) => [...current, group]); showToast('Group created.');
   };
 
+  const saveGroupChanges = async (group: Group) => {
+    await saveGroup(group);
+    setGroups((current) => current.map((item) => item.id === group.id ? group : item));
+    showToast('Group updated.');
+  };
+  const askDeleteGroup = (group: Group) => {
+    setConfirm({ title: `Delete ${group.name}?`, message: 'This removes the group, its messages, and its community links from this device.', confirmLabel: 'Delete group', danger: true, onConfirm: async () => {
+      await removeGroup(group.id);
+      setGroups((current) => current.filter((item) => item.id !== group.id));
+      setGroupMessages((current) => current.filter((item) => item.groupId !== group.id));
+      setCommunities((current) => current.map((item) => ({ ...item, groupIds: item.groupIds.filter((id) => id !== group.id) })));
+      setActiveGroupId(null); setScreen('home'); showToast('Group deleted.');
+    } });
+  };
+
   const createCommunity = async (name: string, groupIds: string[]) => {
     const community: Community = { id: makeId(), name, groupIds, createdAt: new Date().toISOString(), order: communities.length };
     await saveCommunity(community); setCommunities((current) => [...current, community]); showToast('Community created.');
@@ -1231,6 +1322,18 @@ function App() {
     setGroupMessages((current) => [...current, message].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)));
     try { await saveGroupMessage(message); }
     catch (error) { setGroupMessages((current) => current.filter((item) => item.id !== message.id)); throw error; }
+  };
+
+  const addCall = async (entry: Omit<CallRecord, 'id'>) => {
+    const call: CallRecord = { ...entry, id: makeId() };
+    await saveCall(call);
+    setCalls((current) => [call, ...current].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)));
+    showToast('Call record saved.');
+  };
+  const deleteCall = async (id: string) => {
+    await removeCall(id);
+    setCalls((current) => current.filter((call) => call.id !== id));
+    showToast('Call record removed.');
   };
 
   const askDeleteMessage = (message: Message) => {
@@ -1259,6 +1362,7 @@ function App() {
         setPreferences((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`contact:${contact.id}:`))));
         setMessages((current) => current.filter((item) => item.contactId !== contact.id));
         setStatuses((current) => current.filter((item) => item.ownerId !== contact.id));
+        setCalls((current) => current.filter((call) => call.contactId !== contact.id));
         setGroups((current) => current.map((group) => ({ ...group, memberIds: group.memberIds.filter((id) => id !== contact.id) })));
         setActiveContactId(null);
         setScreen('home');
@@ -1268,8 +1372,8 @@ function App() {
   };
 
   const exportData = () => {
-    if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !Object.keys(preferences).length && appProfile.name === 'You' && appProfile.about === 'Available' && !appProfile.phoneNumber && !appProfile.photoDataUrl) return;
-    const backup = makeBackup({ contacts, messages, groups, groupMessages, communities, statuses, appProfile, preferences: Object.entries(preferences).map(([id, value]) => ({ id, value })) });
+    if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !calls.length && !Object.keys(preferences).length && appProfile.name === 'You' && appProfile.about === 'Available' && !appProfile.phoneNumber && !appProfile.photoDataUrl) return;
+    const backup = makeBackup({ contacts, messages, groups, groupMessages, communities, statuses, calls, appProfile, preferences: Object.entries(preferences).map(([id, value]) => ({ id, value })) });
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1287,7 +1391,7 @@ function App() {
     try {
       const parsed: unknown = JSON.parse(await file.text());
       const backup = validateBackup(parsed);
-      if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !Object.keys(preferences).length) {
+      if (!contacts.length && !messages.length && !groups.length && !groupMessages.length && !communities.length && !statuses.length && !calls.length && !Object.keys(preferences).length) {
         await replaceLocalData(backup);
         await refreshData();
         setScreen('home');
@@ -1321,7 +1425,7 @@ function App() {
         await clearLocalData();
         setContacts([]);
         setMessages([]);
-        setGroups([]); setGroupMessages([]); setCommunities([]); setStatuses([]);
+        setGroups([]); setGroupMessages([]); setCommunities([]); setStatuses([]); setCalls([]);
         setPreferences({}); setAppProfile({ name: 'You', about: 'Available', phoneNumber: '', photoDataUrl: null });
         setActiveContactId(null);
         setScreen('home');
@@ -1375,22 +1479,28 @@ function App() {
       onToast={showToast}
     />
   ) : screen === 'profile' ? (
-    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || appProfile.about !== 'Available' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} />
+    <ProfileScreen hasData={contacts.length > 0 || messages.length > 0 || groups.length > 0 || groupMessages.length > 0 || communities.length > 0 || statuses.length > 0 || calls.length > 0 || Object.keys(preferences).length > 0 || appProfile.name !== 'You' || appProfile.about !== 'Available' || !!appProfile.photoDataUrl || !!appProfile.phoneNumber} profile={appProfile} preferences={preferences} onSaveProfile={persistProfile} onSavePreference={persistPreference} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCalls={() => setScreen('calls')} onCommunities={() => setScreen('communities')} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetData} onToast={showToast} />
   ) : screen === 'updates' ? (
-    <UpdatesScreen contacts={contacts} statuses={statuses} onAddStatus={addStatus} onOpenStatus={(status) => { setActiveStatus(status); }} onHome={() => setScreen('home')} onCommunities={() => setScreen('communities')} onProfile={() => setScreen('profile')} />
+    <UpdatesScreen contacts={contacts} statuses={statuses} onAddStatus={addStatus} onOpenStatus={(status) => { setActiveStatus(status); }} onHome={() => setScreen('home')} onCalls={() => setScreen('calls')} onCommunities={() => setScreen('communities')} onProfile={() => setScreen('profile')} />
+  ) : screen === 'calls' ? (
+    <CallsScreen contacts={contacts} calls={calls} onAdd={addCall} onDelete={(id) => void deleteCall(id)} onHome={() => setScreen('home')} onProfile={() => setScreen('profile')} onUpdates={() => setScreen('updates')} onCommunities={() => setScreen('communities')} />
   ) : screen === 'communities' ? (
-    <CommunitiesScreen contacts={contacts} groups={groups} groupMessages={groupMessages} communities={communities} onCreateGroup={createGroup} onCreateCommunity={createCommunity} onUpdateCommunityGroups={updateCommunityGroups} onOpenGroup={(id) => { setActiveGroupId(id); setScreen('group-conversation'); }} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onProfile={() => setScreen('profile')} />
+    <CommunitiesScreen contacts={contacts} groups={groups} communities={communities} onCreateGroup={createGroup} onCreateCommunity={createCommunity} onUpdateCommunityGroups={updateCommunityGroups} onOpenGroup={(id) => { setActiveGroupId(id); setScreen('group-conversation'); }} onHome={() => setScreen('home')} onUpdates={() => setScreen('updates')} onCalls={() => setScreen('calls')} onProfile={() => setScreen('profile')} />
   ) : screen === 'group-conversation' && activeGroup ? (
-    <GroupConversationScreen group={activeGroup} contacts={contacts} messages={groupMessages.filter((message) => message.groupId === activeGroup.id)} onBack={() => setScreen('communities')} onSend={(text) => addGroupMessage(activeGroup.id, text)} onReceive={(text, senderId) => addGroupMessage(activeGroup.id, text, 'incoming', senderId)} />
+    <GroupConversationScreen group={activeGroup} contacts={contacts} messages={groupMessages.filter((message) => message.groupId === activeGroup.id)} onBack={() => setScreen('home')} onSend={(text) => addGroupMessage(activeGroup.id, text)} onReceive={(text, senderId) => addGroupMessage(activeGroup.id, text, 'incoming', senderId)} onSaveGroup={saveGroupChanges} onDeleteGroup={() => askDeleteGroup(activeGroup)} />
   ) : (
     <HomeScreen
       contacts={contacts}
       messages={messages}
+      groups={groups}
+      groupMessages={groupMessages}
       search={search}
       setSearch={setSearch}
       onOpenContact={(id) => { setActiveContactId(id); setScreen('conversation'); }}
+      onOpenGroup={(id) => { setActiveGroupId(id); setScreen('group-conversation'); }}
       onProfile={() => setScreen('profile')}
       onUpdates={() => setScreen('updates')}
+      onCalls={() => setScreen('calls')}
       onCommunities={() => setScreen('communities')}
       onAddContact={() => setAddContactOpen(true)}
       onToast={showToast}

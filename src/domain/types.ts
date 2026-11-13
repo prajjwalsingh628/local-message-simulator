@@ -46,6 +46,16 @@ export interface Group {
   order: number;
 }
 
+export type CallKind = 'received' | 'outgoing' | 'missed';
+export interface CallRecord {
+  id: string;
+  contactId: string;
+  kind: CallKind;
+  createdAt: string;
+  durationSeconds: number;
+  video: boolean;
+}
+
 export interface GroupMessage {
   id: string;
   groupId: string;
@@ -95,7 +105,7 @@ export interface AppPreference { id: string; value: AppPreferenceValue }
 
 export interface BackupFile {
   format: 'local-message-simulator-backup';
-  version: 3;
+  version: 4;
   exportedAt: string;
   contacts: Contact[];
   messages: Message[];
@@ -105,4 +115,5 @@ export interface BackupFile {
   statuses: StatusUpdate[];
   appProfile?: AppProfile;
   preferences?: AppPreference[];
+  calls?: CallRecord[];
 }

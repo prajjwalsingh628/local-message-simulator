@@ -1,7 +1,7 @@
-import type { AppPreference, AppProfile, BackupFile, Community, Contact, Group, GroupMessage, Message, StatusUpdate } from './types';
+import type { AppPreference, AppProfile, BackupFile, CallRecord, Community, Contact, Group, GroupMessage, Message, StatusUpdate } from './types';
 
 const DB_NAME = 'local-message-simulator';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let databasePromise: Promise<IDBDatabase> | undefined;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -44,6 +44,10 @@ export function openDatabase(): Promise<IDBDatabase> {
         }
         if (!db.objectStoreNames.contains('preferences')) db.createObjectStore('preferences', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('appProfile')) db.createObjectStore('appProfile', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('calls')) {
+          const calls = db.createObjectStore('calls', { keyPath: 'id' });
+          calls.createIndex('contactId', 'contactId', { unique: false });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error('Could not open local storage.'));
@@ -65,13 +69,14 @@ export interface LocalData {
   statuses: StatusUpdate[];
   preferences: AppPreference[];
   appProfile?: AppProfile;
+  calls: CallRecord[];
 }
 
 export async function readAllData(): Promise<LocalData> {
   const db = await openDatabase();
-  const transaction = db.transaction(['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile'], 'readonly');
+  const transaction = db.transaction(['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile', 'calls'], 'readonly');
   const done = transactionDone(transaction);
-  const [contacts, messages, groups, groupMessages, communities, statuses, preferences, appProfileRecord] = await Promise.all([
+  const [contacts, messages, groups, groupMessages, communities, statuses, preferences, appProfileRecord, calls] = await Promise.all([
     requestResult<Contact[]>(transaction.objectStore('contacts').getAll()),
     requestResult<Message[]>(transaction.objectStore('messages').getAll()),
     requestResult<Group[]>(transaction.objectStore('groups').getAll()),
@@ -79,7 +84,8 @@ export async function readAllData(): Promise<LocalData> {
     requestResult<Community[]>(transaction.objectStore('communities').getAll()),
     requestResult<StatusUpdate[]>(transaction.objectStore('statuses').getAll()),
     requestResult<AppPreference[]>(transaction.objectStore('preferences').getAll()),
-    requestResult<{ id: string; name: string; about: string; phoneNumber: string; photoDataUrl: string | null } | undefined>(transaction.objectStore('appProfile').get('me'))
+    requestResult<{ id: string; name: string; about: string; phoneNumber: string; photoDataUrl: string | null } | undefined>(transaction.objectStore('appProfile').get('me')),
+    requestResult<CallRecord[]>(transaction.objectStore('calls').getAll())
   ]);
   await done;
   const now = Date.now();
@@ -98,7 +104,8 @@ export async function readAllData(): Promise<LocalData> {
     communities: communities.sort((left, right) => left.order - right.order),
     statuses: activeStatuses.sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
     preferences,
-    ...(appProfileRecord ? { appProfile: { name: appProfileRecord.name, about: appProfileRecord.about, phoneNumber: appProfileRecord.phoneNumber, photoDataUrl: appProfileRecord.photoDataUrl } } : {})
+    ...(appProfileRecord ? { appProfile: { name: appProfileRecord.name, about: appProfileRecord.about, phoneNumber: appProfileRecord.phoneNumber, photoDataUrl: appProfileRecord.photoDataUrl } } : {}),
+    calls: calls.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
   };
 }
 
@@ -134,6 +141,20 @@ export async function saveGroup(group: Group): Promise<void> {
   const db = await openDatabase();
   const transaction = db.transaction('groups', 'readwrite');
   transaction.objectStore('groups').put(group);
+  await transactionDone(transaction);
+}
+
+export async function saveCall(call: CallRecord): Promise<void> {
+  const db = await openDatabase();
+  const transaction = db.transaction('calls', 'readwrite');
+  transaction.objectStore('calls').put(call);
+  await transactionDone(transaction);
+}
+
+export async function removeCall(id: string): Promise<void> {
+  const db = await openDatabase();
+  const transaction = db.transaction('calls', 'readwrite');
+  transaction.objectStore('calls').delete(id);
   await transactionDone(transaction);
 }
 
@@ -190,7 +211,7 @@ export async function removeStatus(id: string): Promise<void> {
 
 export async function removeContactAndMessages(id: string): Promise<void> {
   const db = await openDatabase();
-  const transaction = db.transaction(['contacts', 'messages', 'statuses', 'groups', 'preferences'], 'readwrite');
+  const transaction = db.transaction(['contacts', 'messages', 'statuses', 'groups', 'preferences', 'calls'], 'readwrite');
   transaction.objectStore('contacts').delete(id);
   const messages = transaction.objectStore('messages');
   const messageCursor = messages.index('contactId').openKeyCursor(IDBKeyRange.only(id));
@@ -221,6 +242,12 @@ export async function removeContactAndMessages(id: string): Promise<void> {
     if (String(cursor.key).startsWith(`contact:${id}:`)) cursor.delete();
     cursor.continue();
   };
+  const calls = transaction.objectStore('calls');
+  const callCursor = calls.index('contactId').openKeyCursor(IDBKeyRange.only(id));
+  callCursor.onsuccess = () => {
+    const cursor = callCursor.result;
+    if (cursor) { calls.delete(cursor.primaryKey); cursor.continue(); }
+  };
   await transactionDone(transaction);
 }
 
@@ -248,7 +275,7 @@ export async function removeGroup(id: string): Promise<void> {
 
 export async function replaceLocalData(backup: BackupFile): Promise<void> {
   const db = await openDatabase();
-  const names = ['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile'];
+  const names = ['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile', 'calls'];
   const transaction = db.transaction(names, 'readwrite');
   for (const name of names) transaction.objectStore(name).clear();
   for (const contact of backup.contacts) transaction.objectStore('contacts').put(contact);
@@ -257,6 +284,7 @@ export async function replaceLocalData(backup: BackupFile): Promise<void> {
   for (const message of backup.groupMessages) transaction.objectStore('groupMessages').put(message);
   for (const community of backup.communities) transaction.objectStore('communities').put(community);
   for (const status of backup.statuses) transaction.objectStore('statuses').put(status);
+  for (const call of backup.calls ?? []) transaction.objectStore('calls').put(call);
   if (backup.appProfile) transaction.objectStore('appProfile').put({ id: 'me', ...backup.appProfile });
   for (const preference of backup.preferences ?? []) transaction.objectStore('preferences').put(preference);
   await transactionDone(transaction);
@@ -264,7 +292,7 @@ export async function replaceLocalData(backup: BackupFile): Promise<void> {
 
 export async function clearLocalData(): Promise<void> {
   const db = await openDatabase();
-  const names = ['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile'];
+  const names = ['contacts', 'messages', 'groups', 'groupMessages', 'communities', 'statuses', 'preferences', 'appProfile', 'calls'];
   const transaction = db.transaction(names, 'readwrite');
   for (const name of names) transaction.objectStore(name).clear();
   await transactionDone(transaction);

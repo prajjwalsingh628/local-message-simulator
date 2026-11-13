@@ -1,4 +1,4 @@
-import type { AppPreference, AppProfile, BackupFile, Community, Contact, Group, GroupMessage, Message, MessageAttachment, StatusUpdate } from './types';
+import type { AppPreference, AppProfile, BackupFile, CallRecord, Community, Contact, Group, GroupMessage, Message, MessageAttachment, StatusUpdate } from './types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,7 +46,7 @@ function validateAttachments(value: unknown): MessageAttachment[] | undefined {
 export function validateBackup(value: unknown): BackupFile {
   if (!isRecord(value)
     || value.format !== 'local-message-simulator-backup'
-    || (value.version !== 1 && value.version !== 2 && value.version !== 3)
+    || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4)
     || !Array.isArray(value.contacts)
     || !Array.isArray(value.messages)) {
     throw new Error('This file is not a supported local app backup.');
@@ -156,6 +156,15 @@ export function validateBackup(value: unknown): BackupFile {
       caption: entry.caption, createdAt: entry.createdAt, expiresAt: entry.expiresAt, viewed: entry.viewed };
   }).filter((status) => Date.parse(status.expiresAt) > Date.now());
 
+  const callEntries = Array.isArray(value.calls) ? value.calls : [];
+  const calls: CallRecord[] = callEntries.map((entry) => {
+    if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.contactId !== 'string'
+      || !contactIds.has(entry.contactId) || !['received', 'outgoing', 'missed'].includes(String(entry.kind))
+      || !isValidDate(entry.createdAt) || typeof entry.durationSeconds !== 'number' || entry.durationSeconds < 0
+      || typeof entry.video !== 'boolean') throw new Error('A call record in this backup is incomplete.');
+    return { id: entry.id, contactId: entry.contactId, kind: entry.kind as CallRecord['kind'], createdAt: entry.createdAt, durationSeconds: entry.durationSeconds, video: entry.video };
+  });
+
   const messageIds = new Set(messages.map((message) => message.id));
   if (messageIds.size !== messages.length) throw new Error('The backup contains duplicate message IDs.');
 
@@ -172,13 +181,13 @@ export function validateBackup(value: unknown): BackupFile {
     return { id: entry.id, value: entry.value as AppPreference['value'] };
   });
   return {
-    format: 'local-message-simulator-backup', version: 3,
+    format: 'local-message-simulator-backup', version: 4,
     exportedAt: isValidDate(value.exportedAt) ? value.exportedAt : new Date().toISOString(),
-    contacts, messages, groups, groupMessages, communities, statuses,
+    contacts, messages, groups, groupMessages, communities, statuses, calls,
     ...(appProfile ? { appProfile } : {}), preferences
   };
 }
 
 export function makeBackup(data: Omit<BackupFile, 'format' | 'version' | 'exportedAt'>): BackupFile {
-  return { format: 'local-message-simulator-backup', version: 3, exportedAt: new Date().toISOString(), ...data };
+  return { format: 'local-message-simulator-backup', version: 4, exportedAt: new Date().toISOString(), ...data };
 }
