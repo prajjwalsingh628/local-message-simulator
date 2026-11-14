@@ -1,12 +1,11 @@
-const CACHE_NAME = 'local-message-simulator-dev-shell-icons-v2';
+const CACHE_NAME = 'local-message-simulator-dev-shell-icons-v3';
 const APP_FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './favicon-v2.svg',
-  './aashna-mam-apple-touch-icon.png',
-  './aashna-mam-icon-192.png',
-  './aashna-mam-icon-512.png'
+  './local-chat-icon-192-v3.png',
+  './local-chat-icon-512-v3.png',
+  './local-chat-apple-touch-v3.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -48,3 +47,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
